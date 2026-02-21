@@ -1,3 +1,4 @@
+
 # Environment Configuration Guide
 
 This project uses a dual-layer configuration system to manage database connections across **QA** and **Production** environments while keeping sensitive credentials secure.

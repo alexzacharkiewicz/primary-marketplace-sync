@@ -1,0 +1,55 @@
+default:
+  db_type: "postgres"
+  host: "localhost"
+  dbname: "qa1"
+  user: "alex.zacharkiewicz"
+  port: 5432
+  pass: "DEFAULT_PASS"
+
+qa_postgres:
+  db_type: "postgres"
+  host: "sitix-qa-cluster-1-cluster-cluster.cluster-cmzvajts10ys.us-east-1.rds.amazonaws.com"
+  dbname: "qa1"
+  user: "alex.zacharkiewicz"
+  port: 5432
+  pass: "QA_PSQL_PASS"
+
+qa_mysql:
+  db_type: "mysql"
+  host: "hn-dev-rds-db-cluster.cluster-ca80jjtsce47.us-west-2.rds.amazonaws.com"
+  dbname: "dbmaster"
+  user: "alex_z"
+  port: 3306
+  pass: "QA_MYSQL_PASS"
+
+uat_postgres:
+  db_type: "postgres"
+  host: "uat-sitickets-aurora-cluster.cluster-cmzvajts10ys.us-east-1.rds.amazonaws.com"
+  dbname: "uat"
+  user: "alex.zacharkiewicz"
+  port: 5432
+  pass: "UAT_PSQL_PASS"
+
+uat_mysql:
+  db_type: "mysql"
+  host: "hn-uat-rds-db-cluster.cluster-ca00350tnqfd.us-east-2.rds.amazonaws.com"
+  dbname: "dbmaster"
+  user: "alex_z"
+  port: 3306
+  pass: "UAT_MYSQL_PASS"
+  
+prod_postgres:
+  db_type: "postgres"
+  host: "prod-sitickets-aurora-cluster-restored-instance-2.cmzvajts10ys.us-east-1.rds.amazonaws.com"
+  dbname: "sitickets"
+  user: "alex_zacharkiewicz"
+  port: 5432
+  pass: "PROD_PSQL_PASS"
+
+prod_mysql:
+  db_type: "mysql"
+  host: "10.100.16.128"
+  dbname: "dbmaster"
+  user: "alex_zacharkiewicz"
+  port: 3306
+  pass: "PROD_MYSQL_PASS"

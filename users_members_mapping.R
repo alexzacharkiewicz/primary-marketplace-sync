@@ -50,15 +50,20 @@ connect_to_db <- function(env_name) {
 }
 
 # 1. Establish the connections
-con <- connect_to_db("uat_postgres")
-con2 <- connect_to_db("uat_mysql")
+con <- connect_to_db("prod_postgres")
+con2 <- connect_to_db("prod_mysql")
 
 
 # 2. Define marketplace query
 query1 <- "SELECT u.id, u.email FROM users u"
+backupQuery <- "SELECT u.id, u.email, u.hn_member_id FROM users u"
 
 # 3. Execute the query and fetch into a DataFrame
 df_users <- dbGetQuery(con, query1)
+df_users_backup <- dbGetQuery(con, backupQuery)
+
+# write backup of old user to member mapping
+write.csv(df_users_backup, "users_backup_022426.csv", row.names = FALSE)
 
 # 4. Define BOE query
 # MySQL uses backticks (`) for identifiers if they are reserved words, 
@@ -80,10 +85,33 @@ df_users$email <- trimws(tolower(df_users$email))
 df_members <- df_members %>%
   rename(member_id = id)
 
+# check for duplicate emails after sanitizing text
+email_duplicates_hn <- df_members %>%
+  group_by(email) %>%
+  filter(n() > 1) %>%
+  arrange(email)
+
+print(email_duplicates_hn)
+
+email_duplicates_ws <- df_users %>%
+  group_by(email) %>%
+  filter(n() > 1) %>%
+  arrange(email)
+
+print(email_duplicates_ws)
+
 # 8. Perform a Left Join
 # This keeps everything in the member list and adds user_ids where the email matches
 mapped_data <- df_users %>%
   left_join(df_members %>% select(email, member_id), by = "email")
+
+#check for duplicates in mapped data
+email_duplicates <- mapped_data %>%
+  group_by(email) %>%
+  filter(n() > 1) %>%
+  arrange(email)
+
+print(email_duplicates)
 
 # 9. Write your final R dataframe to a temporary table in Postgres
 # This table will vanish automatically when you disconnect
@@ -104,9 +132,9 @@ dbExecute(con, update_query)
 # 12. Pull a summary of the update results
 validation_query <- "
   SELECT 
-    COUNT(*) AS total_users,
-    COUNT(hn_member_id) AS matched_users,
-    COUNT(*) - COUNT(hn_member_id) AS missing_ids
+    CAST(COUNT(*) AS BIGINT) AS total_users,
+    CAST(COUNT(hn_member_id) AS BIGINT) AS matched_users,
+    CAST(COUNT(*) - COUNT(hn_member_id) AS BIGINT) AS missing_ids
   FROM users;
 "
 
@@ -114,9 +142,9 @@ stats <- dbGetQuery(con, validation_query)
 
 # 13. Print a friendly summary
 cat("--- Update Results ---\n")
-cat("Total Users in DB:  ", stats$total_users, "\n")
-cat("Successfully Mapped:", stats$matched_users, "\n")
-cat("Still Missing ID:  ", stats$missing_ids, "\n")
+cat("Total Users in DB:  ", as.integer(stats$total_users), "\n")
+cat("Successfully Mapped:", as.integer(stats$matched_users), "\n")
+cat("Still Missing ID:  ", as.integer(stats$missing_ids), "\n")
 
 # 14. Preview the newly mapped data
 preview <- dbGetQuery(con, "SELECT id, email, hn_member_id FROM users WHERE hn_member_id IS NOT NULL LIMIT 10")

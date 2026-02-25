@@ -56,14 +56,9 @@ con2 <- connect_to_db("prod_mysql")
 
 # 2. Define marketplace query
 query1 <- "SELECT u.id, u.email FROM users u"
-backupQuery <- "SELECT u.id, u.email, u.hn_member_id FROM users u"
 
 # 3. Execute the query and fetch into a DataFrame
 df_users <- dbGetQuery(con, query1)
-df_users_backup <- dbGetQuery(con, backupQuery)
-
-# write backup of old user to member mapping
-write.csv(df_users_backup, "users_backup_022426.csv", row.names = FALSE)
 
 # 4. Define BOE query
 # MySQL uses backticks (`) for identifiers if they are reserved words, 
@@ -91,17 +86,12 @@ email_duplicates_hn <- df_members %>%
   filter(n() > 1) %>%
   arrange(email)
 
-print(email_duplicates_hn)
-
 email_duplicates_ws <- df_users %>%
   group_by(email) %>%
   filter(n() > 1) %>%
   arrange(email)
 
-print(email_duplicates_ws)
-
 # 8. Perform a Left Join
-# This keeps everything in the member list and adds user_ids where the email matches
 mapped_data <- df_users %>%
   left_join(df_members %>% select(email, member_id), by = "email")
 
@@ -110,8 +100,6 @@ email_duplicates <- mapped_data %>%
   group_by(email) %>%
   filter(n() > 1) %>%
   arrange(email)
-
-print(email_duplicates)
 
 # 9. Write your final R dataframe to a temporary table in Postgres
 # This table will vanish automatically when you disconnect
@@ -123,7 +111,7 @@ update_query <- "
   UPDATE users u
   SET hn_member_id = t.member_id
   FROM temp_mapping t
-  WHERE u.id = t.id;
+  WHERE u.id = t.id AND t.member_id is not null and u.hn_member_id != t.member_id;
 "
 
 # 11. Execute the update
@@ -137,15 +125,5 @@ validation_query <- "
     CAST(COUNT(*) - COUNT(hn_member_id) AS BIGINT) AS missing_ids
   FROM users;
 "
-
-stats <- dbGetQuery(con, validation_query)
-
-# 13. Print a friendly summary
-cat("--- Update Results ---\n")
-cat("Total Users in DB:  ", as.integer(stats$total_users), "\n")
-cat("Successfully Mapped:", as.integer(stats$matched_users), "\n")
-cat("Still Missing ID:  ", as.integer(stats$missing_ids), "\n")
-
-# 14. Preview the newly mapped data
-preview <- dbGetQuery(con, "SELECT id, email, hn_member_id FROM users WHERE hn_member_id IS NOT NULL LIMIT 10")
-print(preview)
+# 6. Clean up: Close the PSQL connection
+dbDisconnect(con)

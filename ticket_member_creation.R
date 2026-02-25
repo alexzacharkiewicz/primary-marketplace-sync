@@ -46,26 +46,29 @@ connect_to_db <- function(env_name) {
 }
 
 # 1. Establish the connections
-con <- connect_to_db("qa_mysql")
+con <- connect_to_db("prod_mysql")
+con2 <- connect_to_db("prod_postgres")
 
 # 2. Define your queries
-query1 <- "SELECT DISTINCT t.customer_email
-FROM transactions t 
-LEFT JOIN members m 
-ON m.email = t.customer_email 
-WHERE t.member_id IS NULL AND t.customer_email IS NOT NULL AND YEAR(t.`date`) >= 2026 AND m.id IS NULL"
+query1 <- "SELECT DISTINCT t.user_id, u.email, u.fname, u.lname, u.created_at  
+FROM boxoffice.tickets t
+LEFT JOIN users u 
+ON u.id = t.user_id
+WHERE u.hn_member_id IS NULL AND (t.boe_event_id IS NOT NULL OR t.boe_ticket_id IS NOT NULL)"
 
 query2 <- "SELECT m.id, m.email FROM members m"
 
 
 df_members <- dbGetQuery(con, query2)
-df_orphans <- dbGetQuery(con, query1)
+df_orphans <- dbGetQuery(con2, query1)
 
 #sanitize email text
 df_members$email <- trimws(tolower(df_members$email))
 df_members <- df_members %>%
   rename(member_id = id)
-df_orphans$customer_email <- trimws(tolower(df_orphans$customer_email))
+df_orphans$email <- trimws(tolower(df_orphans$email))
+df_orphans <- df_orphans %>%
+  mutate(email = as.character(email))
 
 #check for duplicate members after sanitizing
 email_duplicates_members <- df_members %>%
@@ -73,28 +76,49 @@ email_duplicates_members <- df_members %>%
   filter(n() > 1) %>%
   arrange(email)
 
-# View the results
-print(email_duplicates_members)
-
 #check for duplicate orphans after sanitizing
 email_duplicates_orphans <- df_orphans %>%
-  group_by(customer_email) %>%
+  group_by(email) %>%
   filter(n() > 1) %>%
-  arrange(customer_email)
-
-# View the results
-print(email_duplicates_orphans)
+  arrange(email)
 
 # Returns cleaned emails from transactions that do not match to members
 unmatched_emails <- df_orphans %>%
-  anti_join(df_members, by = c("customer_email" = "email"))
-
-# View the results
-print(unmatched_members)
+  anti_join(df_members, by = c("email" = "email"))
 
 # returns member emails that match an orphan after sanitizing
 cleaned_matches <- df_members %>%
-  inner_join(df_orphans, by = c("email" = "customer_email"))
+  inner_join(df_orphans, by = c("email" = "email"))
 
-# View the results
-print(cleaned_matches)
+#rename columns to match DB
+unmatched_emails <- unmatched_emails %>% 
+  rename(external_id = user_id,
+         member_since = created_at)
+
+#combine first and last name for member name
+unmatched_emails$name <- paste(unmatched_emails$fname, unmatched_emails$lname)
+
+# Delete multiple columns
+unmatched_emails <- unmatched_emails %>% select(-c(fname, lname))
+
+# 1. Upload results to a temp table
+dbWriteTable(con, "temp_members_load", unmatched_emails, temporary = TRUE, overwrite = TRUE)
+
+# 2. Execute the INSERT statement using SQL functions
+insert_sql <- "
+INSERT INTO dbmaster.members (
+    id, email, name, phone_number, address, 
+    email_verified, phone_verified, created_at, 
+    external_id, updated_at, member_since
+)
+SELECT 
+    UUID(), email, name, NULL, NULL, 
+    0, 0, CURRENT_TIMESTAMP, 
+    external_id, CURRENT_TIMESTAMP, member_since
+FROM temp_members_load;"
+
+dbExecute(con, insert_sql)
+
+#close DB connections
+dbDisconnect(con)
+dbDisconnect(con2)
